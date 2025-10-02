@@ -81,13 +81,15 @@ export default function Play() {
                     const iframe = iframeRef.current;
                     if (iframe?.requestFullscreen) iframe.requestFullscreen();
                 }}
-                className="absolute top-2 right-2 z-10 bg-white text-black px-3 py-1 rounded sm:hidden"
+                className="absolute top-2 right-2 z-10 bg-white text-black px-3 py-1 rounded lg:hidden"
             >
                 Fullscreen
             </button>
             <iframe
                 ref={iframeRef}
                 src="/godot/index.html"
+                allow="fullscreen"
+                allowFullScreen
                 style={{ width: "100%", height: "100%", border: "none" }}
                 title="Godot Game"
             />
