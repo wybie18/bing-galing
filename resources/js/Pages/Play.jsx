@@ -66,7 +66,7 @@ export default function Play() {
         <div style={{ width: "100%", height: "100vh", background: "black" }}>
             <button
                 onClick={requestFullscreen}
-                className="absolute top-2 right-2 z-10 bg-white text-black px-3 py-1 rounded"
+                className="absolute top-2 right-2 z-10 bg-white text-black px-3 py-1 rounded sm:hidden"
             >
                 Fullscreen
             </button>
