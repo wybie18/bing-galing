@@ -81,7 +81,7 @@ export default function Play() {
                     const iframe = iframeRef.current;
                     if (iframe?.requestFullscreen) iframe.requestFullscreen();
                 }}
-                className="absolute top-2 right-2 z-10 bg-white text-black px-3 py-1 rounded lg:hidden"
+                className="absolute top-2 right-2 z-10 bg-white text-black px-3 py-1 rounded"
             >
                 Fullscreen
             </button>
