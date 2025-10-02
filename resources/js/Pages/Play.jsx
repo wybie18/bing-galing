@@ -31,14 +31,25 @@ export default function Play() {
         };
     }, []);
 
-    const requestFullscreen = () => {
-        const iframe = iframeRef.current;
-        if (iframe?.requestFullscreen) {
-            iframe.requestFullscreen();
-        } else if (iframe?.webkitRequestFullscreen) {
-            iframe.webkitRequestFullscreen();
-        }
-    };
+    // This will try fullscreen after first click/touch anywhere
+    useEffect(() => {
+        const enableFullscreen = () => {
+            const iframe = iframeRef.current;
+            if (iframe?.requestFullscreen) iframe.requestFullscreen();
+            else if (iframe?.webkitRequestFullscreen) iframe.webkitRequestFullscreen();
+
+            document.removeEventListener("click", enableFullscreen);
+            document.removeEventListener("touchstart", enableFullscreen);
+        };
+
+        document.addEventListener("click", enableFullscreen);
+        document.addEventListener("touchstart", enableFullscreen);
+
+        return () => {
+            document.removeEventListener("click", enableFullscreen);
+            document.removeEventListener("touchstart", enableFullscreen);
+        };
+    }, []);
 
     if (isMobile && isPortrait) {
         return (
@@ -64,8 +75,12 @@ export default function Play() {
 
     return (
         <div style={{ width: "100%", height: "100vh", background: "black" }}>
+            {/* Button stays as fallback */}
             <button
-                onClick={requestFullscreen}
+                onClick={() => {
+                    const iframe = iframeRef.current;
+                    if (iframe?.requestFullscreen) iframe.requestFullscreen();
+                }}
                 className="absolute top-2 right-2 z-10 bg-white text-black px-3 py-1 rounded sm:hidden"
             >
                 Fullscreen
