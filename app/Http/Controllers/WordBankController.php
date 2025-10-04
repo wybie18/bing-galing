@@ -19,9 +19,9 @@ class WordBankController extends Controller
         $query = WordBank::with(['teacher:id,name', 'words' => function ($q) {
             $q->where('is_active', true);
         }])
-            ->where('is_active', true)
-            ->orderBy('created_at', 'desc');
+            ->where('is_active', true);
 
+        // Search filter
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
@@ -32,27 +32,48 @@ class WordBankController extends Controller
                     });
             });
         }
-
-        if ($request->filled('queryFilter') && $request->queryFilter === 'my_wordbanks') {
+        
+        if ($request->filled('filter') && $request->filter === 'my_wordbanks') {
             $query->where('teacher_id', Auth::id());
         }
 
-        $sortField     = request('sort_field', 'created_at');
-        $sortDirection = request('sort_direction', 'desc');
+        $sortField     = $request->input('sort_field', 'created_at');
+        $sortDirection = $request->input('sort_direction', 'desc');
 
-        $query->orderBy($sortField, $sortDirection);
+        switch ($sortField) {
+            case 'teacher':
+                $query->join('users', 'word_banks.teacher_id', '=', 'users.id')
+                    ->select('word_banks.*')
+                    ->orderBy('users.name', $sortDirection);
+                break;
+
+            case 'word_count':
+                $query->withCount(['words' => function ($q) {
+                    $q->where('is_active', true);
+                }])
+                    ->orderBy('words_count', $sortDirection);
+                break;
+
+            default:
+                $query->orderBy($sortField, $sortDirection);
+                break;
+        }
+
+        if ($sortField !== 'created_at') {
+            $query->orderBy('created_at', 'desc');
+        }
 
         $wordBanks = $query->paginate(12);
 
         $wordBanks->getCollection()->transform(function ($wordBank) {
-            $wordBank->is_owner   = $wordBank->teacher_id === Auth::id();
-            $wordBank->word_count = $wordBank->words->count();
+            $wordBank->is_owner = $wordBank->teacher_id === Auth::id();
+            $wordBank->word_count = $wordBank->words_count ?? $wordBank->words->count();
             return $wordBank;
         });
 
         return Inertia::render('WordBanks/Index', [
             'wordBanks'    => $wordBanks,
-            'queryFilters' => $request->only(['search', 'queryFilter']) ?: [],
+            'filters' => $request->only(['search', 'queryFilter']) ?: [],
             'queryParams'  => request()->query() ?: null,
         ]);
     }
@@ -130,7 +151,7 @@ class WordBankController extends Controller
         $words = $wordsQuery->orderBy('created_at', 'desc')->paginate(20);
 
         return Inertia::render('WordBanks/Show', [
-            'wordBank' => [
+            'wordBank'    => [
                 'id'          => $wordBank->id,
                 'name'        => $wordBank->name,
                 'description' => $wordBank->description,
@@ -140,8 +161,8 @@ class WordBankController extends Controller
                 'updated_at'  => $wordBank->updated_at,
                 'is_owner'    => $wordBank->teacher_id === Auth::id(),
             ],
-            'words'    => $words,
-            'filters'  => $request->only(['search']),
+            'words'       => $words,
+            'filters'     => $request->only(['search']),
             'queryParams' => $request->query() ?: null,
         ]);
     }
