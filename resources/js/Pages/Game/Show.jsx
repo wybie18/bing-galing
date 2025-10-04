@@ -19,6 +19,7 @@ import {
     LuArrowLeft,
     LuTrophy,
     LuCrown,
+    LuArrowRight,
 } from "react-icons/lu";
 
 import { MdOutlineStopCircle } from "react-icons/md";
@@ -349,8 +350,8 @@ export default function Show({ game }) {
     };
 
     const getWinnerMedal = (index) => {
-        const medals = ['🥇', '🥈', '🥉'];
-        return medals[index] || '🏆';
+        const medals = ["🥇", "🥈", "🥉"];
+        return medals[index] || "🏆";
     };
 
     return (
@@ -382,14 +383,31 @@ export default function Show({ game }) {
             <div className="py-6 sm:py-8">
                 <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                     {/* Back Button */}
-                    <div className="mb-6">
-                        <button
-                            onClick={() => router.visit(route("games.index"))}
-                            className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 transition-colors"
-                        >
-                            <LuArrowLeft className="w-4 h-4 mr-1" />
-                            Bumalik sa Mga Laro
-                        </button>
+                    <div className="flex justify-between items-center">
+                        <div className="mb-6">
+                            <button
+                                onClick={() =>
+                                    router.visit(route("games.index"))
+                                }
+                                className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                            >
+                                <LuArrowLeft className="w-4 h-4 mr-1" />
+                                Bumalik sa Mga Laro
+                            </button>
+                        </div>
+                        {gameData.status != "waiting" && (
+                            <div className="mb-6">
+                                <button
+                                    onClick={() =>
+                                        router.visit(route("games.start.show", gameData.game_code))
+                                    }
+                                    className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                                >
+                                    Ipakita ang laro
+                                    <LuArrowRight className="w-4 h-4 ml-1" />
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
