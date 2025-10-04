@@ -21,7 +21,7 @@ class GameController extends Controller
     public function index(Request $request)
     {
         $query = Game::with(['teacher', 'wordBank', 'players'])
-            ->where('teacher_id', Auth::id());
+            ->where('games.teacher_id', Auth::id()); // Add table prefix here
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -39,16 +39,40 @@ class GameController extends Controller
             $query->where('game_code', 'like', '%' . $request->search . '%');
         }
 
-        $sortField     = request('sort_field', 'created_at');
-        $sortDirection = request('sort_direction', 'desc');
+        // Sorting logic
+        $sortField     = $request->input('sort_field', 'created_at');
+        $sortDirection = $request->input('sort_direction', 'desc');
 
-        $query->orderBy($sortField, $sortDirection);
+        switch ($sortField) {
+            case 'word_bank':
+                // Sort by word bank name via join
+                $query->join('word_banks', 'games.word_bank_id', '=', 'word_banks.id')
+                    ->select('games.*')
+                    ->orderBy('word_banks.name', $sortDirection);
+                break;
+
+            case 'players_count':
+                // Sort by number of players via subquery count
+                $query->withCount('players')
+                    ->orderBy('players_count', $sortDirection);
+                break;
+
+            default:
+                // For regular columns - add table prefix for clarity
+                $query->orderBy('games.' . $sortField, $sortDirection);
+                break;
+        }
+
+        // Secondary sort by created_at if not already sorting by it
+        if ($sortField !== 'created_at') {
+            $query->orderBy('games.created_at', 'desc');
+        }
 
         $games = $query->paginate(12);
 
         return Inertia::render('Game/Index', [
             'games'        => GameResource::collection($games),
-            'queryFilters' => $request->only(['search', 'queryFilter']) ?: [],
+            'queryFilters' => $request->only(['search', 'status']) ?: [],
             'queryParams'  => request()->query() ?: null,
         ]);
     }
