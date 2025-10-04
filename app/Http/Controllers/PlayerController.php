@@ -3,6 +3,7 @@ namespace App\Http\Controllers;
 
 use App\Events\PlayerJoined;
 use App\Events\PlayerLeft;
+use App\Events\PlayerStatusChanged;
 use App\Http\Requests\CrossWordRequest;
 use App\Http\Requests\JoinGameRequest;
 use App\Http\Resources\PlayerResource;
@@ -218,10 +219,14 @@ class PlayerController extends Controller
             'verified_at'  => now(),
         ]);
 
+        $oldStatus = $player->status;
+
         $player->update([
             'status' => 'won',
             'won_at' => now(),
         ]);
+
+        broadcast(new PlayerStatusChanged($game, $player->fresh(), $oldStatus, 'won'));
 
         return response()->json([
             'message'     => 'Congratulations! Bingo claimed successfully!',
@@ -242,7 +247,9 @@ class PlayerController extends Controller
             ->firstOrFail();
 
         if($player->status !== 'won'){
+            $oldStatus = $player->status;
             $player->update(['status' => 'disconnected']);
+            broadcast(new PlayerStatusChanged($game, $player->fresh(), $oldStatus, 'disconnected'));
         }
         broadcast(new PlayerLeft($game, $player));
 
