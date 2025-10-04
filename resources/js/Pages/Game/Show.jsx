@@ -1,5 +1,5 @@
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
-import { Head, router } from "@inertiajs/react";
+import { Head, Link, router } from "@inertiajs/react";
 import { useState, useEffect } from "react";
 import {
     LuGamepad2,
@@ -17,6 +17,8 @@ import {
     LuRefreshCw,
     LuUserPlus,
     LuArrowLeft,
+    LuTrophy,
+    LuCrown,
 } from "react-icons/lu";
 
 import { MdOutlineStopCircle } from "react-icons/md";
@@ -29,9 +31,18 @@ export default function Show({ game }) {
     const [showPauseModal, setShowPauseModal] = useState(false);
     const [showEndModal, setShowEndModal] = useState(false);
     const [maxPlayers, setMaxPlayers] = useState(gameData.max_players);
+    const [winners, setWinners] = useState([]);
     const [isEditing, setIsEditing] = useState(false);
     const [copied, setCopied] = useState(false);
     const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        setGameData(game.data);
+        const existingWinners = game.data.players
+            .filter((p) => p.status === "won")
+            .sort((a, b) => new Date(a.won_at) - new Date(b.won_at));
+        setWinners(existingWinners);
+    }, [game.data]);
 
     useEffect(() => {
         Echo.channel(`game.${gameData.game_code}`)
@@ -52,6 +63,36 @@ export default function Show({ game }) {
                     ),
                 }));
                 toast.error(event.message);
+            })
+            .listen(".player.status.changed", (event) => {
+                console.log("Player status changed:", event);
+
+                setGameData((prev) => ({
+                    ...prev,
+                    players: prev.players.map((p) =>
+                        p.id === event.player.id ? event.player : p
+                    ),
+                }));
+
+                if (event.is_winner) {
+                    setWinners((prev) => {
+                        const alreadyExists = prev.some(
+                            (w) => w.id === event.player.id
+                        );
+                        if (!alreadyExists) {
+                            toast.success(event.message);
+                            return [...prev, event.player];
+                        }
+                        return prev;
+                    });
+
+                    setGameStats((prev) => ({
+                        ...prev,
+                        playersWithBingo: prev.playersWithBingo + 1,
+                    }));
+                } else {
+                    toast(event.message);
+                }
             })
             .error((error) => {
                 console.error("Echo error:", error);
@@ -99,7 +140,9 @@ export default function Show({ game }) {
 
     const handleStartGame = () => {
         if (gameData.players.length === 0) {
-            toast.error("Hindi maaaring simulan ang laro nang walang mga manlalaro");
+            toast.error(
+                "Hindi maaaring simulan ang laro nang walang mga manlalaro"
+            );
             return;
         }
 
@@ -108,7 +151,8 @@ export default function Show({ game }) {
             route("games.start", gameData.game_code),
             {},
             {
-                onSuccess: () => toast.success("Matagumpay na nagsimula ang laro!"),
+                onSuccess: () =>
+                    toast.success("Matagumpay na nagsimula ang laro!"),
                 onFinish: () => setLoading(false),
             }
         );
@@ -304,6 +348,11 @@ export default function Show({ game }) {
         return configs[status] || "bg-gray-100 text-gray-800";
     };
 
+    const getWinnerMedal = (index) => {
+        const medals = ['🥇', '🥈', '🥉'];
+        return medals[index] || '🏆';
+    };
+
     return (
         <AuthenticatedLayout
             header={
@@ -358,7 +407,7 @@ export default function Show({ game }) {
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                         {/* Game Code */}
                                         <div className="space-y-2">
-                                                <label className="text-sm font-medium text-gray-700">
+                                            <label className="text-sm font-medium text-gray-700">
                                                 Game Code
                                             </label>
                                             <div className="flex items-center space-x-2">
@@ -383,7 +432,7 @@ export default function Show({ game }) {
 
                                         {/* Max Players */}
                                         <div className="space-y-2">
-                                                <label className="text-sm font-medium text-gray-700">
+                                            <label className="text-sm font-medium text-gray-700">
                                                 Max Players
                                             </label>
                                             <div className="flex items-center space-x-2">
@@ -450,7 +499,7 @@ export default function Show({ game }) {
                                                                     )
                                                                 }
                                                                 className="p-3 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-                                                                    title="I-edit ang max players"
+                                                                title="I-edit ang max players"
                                                             >
                                                                 <LuPencil className="w-5 h-5" />
                                                             </button>
@@ -463,8 +512,8 @@ export default function Show({ game }) {
                                         {/* Current Players */}
                                         <div className="space-y-2">
                                             <label className="text-sm font-medium text-gray-700">
-                                                    Kasalukuyang Mga Manlalaro
-                                                </label>
+                                                Kasalukuyang Mga Manlalaro
+                                            </label>
                                             <div className="p-3 bg-gray-50 rounded-lg border">
                                                 <div className="text-lg font-semibold text-center text-gray-900">
                                                     {gameData.players.length}/
@@ -476,8 +525,8 @@ export default function Show({ game }) {
                                         {/* Created */}
                                         <div className="space-y-2">
                                             <label className="text-sm font-medium text-gray-700">
-                                                    Nilikha
-                                                </label>
+                                                Nilikha
+                                            </label>
                                             <div className="flex items-center p-3 bg-gray-50 rounded-lg border">
                                                 <LuCalendar className="w-4 h-4 mr-2 text-gray-500" />
                                                 <span className="text-sm text-gray-900">
@@ -533,7 +582,7 @@ export default function Show({ game }) {
                         </div>
 
                         {/* Players Card */}
-                        <div className="lg:col-span-1">
+                        <div className="lg:col-span-1 space-y-6">
                             <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                                 <div className="p-6">
                                     <div className="flex items-center justify-between mb-4">
@@ -552,9 +601,17 @@ export default function Show({ game }) {
                                         gameData.players.length > 0 ? (
                                             gameData.players.map(
                                                 (player, index) => (
-                                                    <div
+                                                    <Link
+                                                        href={route(
+                                                            "games.players.show",
+                                                            [
+                                                                gameData.game_code,
+                                                                player.id,
+                                                            ]
+                                                        )}
+                                                        as="div"
                                                         key={player.id || index}
-                                                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                                                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
                                                     >
                                                         <div className="flex items-center">
                                                             <div className="w-8 h-8 bg-gradient-to-br from-purple-400 to-pink-400 rounded-full flex items-center justify-center text-white font-medium text-sm">
@@ -596,7 +653,7 @@ export default function Show({ game }) {
                                                                     .label
                                                             }
                                                         </span>
-                                                    </div>
+                                                    </Link>
                                                 )
                                             )
                                         ) : (
@@ -653,6 +710,67 @@ export default function Show({ game }) {
                                         )}
                                 </div>
                             </div>
+                            {winners.length > 0 && (
+                                <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-lg shadow-sm border-2 border-yellow-200">
+                                    <div className="p-6">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                                                <LuTrophy className="w-5 h-5 mr-2 text-yellow-600" />
+                                                Mga Nanalo
+                                            </h3>
+                                            <LuCrown className="w-6 h-6 text-yellow-600" />
+                                        </div>
+
+                                        <div className="space-y-3 overflow-y-auto h-96">
+                                            {winners.map((winner, index) => (
+                                                <div
+                                                    key={winner.id}
+                                                    className={`flex items-center justify-between p-4 rounded-lg ${
+                                                        index === 0
+                                                            ? "bg-yellow-100 border-2 border-yellow-300"
+                                                            : index === 1
+                                                            ? "bg-gray-100 border-2 border-gray-300"
+                                                            : index === 2
+                                                            ? "bg-orange-100 border-2 border-orange-300"
+                                                            : "bg-white border border-gray-200"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-2xl">
+                                                            {getWinnerMedal(
+                                                                index
+                                                            )}
+                                                        </span>
+                                                        <div>
+                                                            <div className="font-semibold text-gray-900">
+                                                                {winner.name}
+                                                            </div>
+                                                            <div className="text-xs text-gray-600">
+                                                                {winner.won_at &&
+                                                                    formatDate(
+                                                                        winner.won_at
+                                                                    )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <div className="text-sm font-medium text-gray-700">
+                                                            Rank #{index + 1}
+                                                        </div>
+                                                        {winner.play_time && (
+                                                            <div className="text-xs text-gray-500">
+                                                                {
+                                                                    winner.play_time
+                                                                }
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

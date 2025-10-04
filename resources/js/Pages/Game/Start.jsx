@@ -11,6 +11,8 @@ import {
     LuArrowLeft,
     LuMic,
     LuSkipForward,
+    LuTrophy,
+    LuCrown,
 } from "react-icons/lu";
 
 import { MdOutlineStopCircle } from "react-icons/md";
@@ -30,6 +32,7 @@ export default function Start({
     const [showEndModal, setShowEndModal] = useState(false);
     const [currentWord, setCurrentWord] = useState(current_word || null);
     const [calledWords, setCalledWords] = useState(recent_words || []);
+    const [winners, setWinners] = useState([]);
     const [gameStats, setGameStats] = useState({
         totalWords: statistics.total_words || 0,
         wordsRemaining: statistics.words_remaining || 0,
@@ -38,6 +41,10 @@ export default function Start({
 
     useEffect(() => {
         setGameData(game.data);
+        const existingWinners = game.data.players
+            .filter((p) => p.status === "won")
+            .sort((a, b) => new Date(a.won_at) - new Date(b.won_at));
+        setWinners(existingWinners);
     }, [game.data]);
 
     useEffect(() => {
@@ -59,6 +66,36 @@ export default function Start({
                     ),
                 }));
                 toast.error(event.message);
+            })
+            .listen(".player.status.changed", (event) => {
+                console.log("Player status changed:", event);
+
+                setGameData((prev) => ({
+                    ...prev,
+                    players: prev.players.map((p) =>
+                        p.id === event.player.id ? event.player : p
+                    ),
+                }));
+
+                if (event.is_winner) {
+                    setWinners((prev) => {
+                        const alreadyExists = prev.some(
+                            (w) => w.id === event.player.id
+                        );
+                        if (!alreadyExists) {
+                            toast.success(event.message);
+                            return [...prev, event.player];
+                        }
+                        return prev;
+                    });
+
+                    setGameStats((prev) => ({
+                        ...prev,
+                        playersWithBingo: prev.playersWithBingo + 1,
+                    }));
+                } else {
+                    toast(event.message);
+                }
             })
             .error((error) => {
                 console.error("Echo error:", error);
@@ -177,6 +214,11 @@ export default function Start({
         return configs[status] || "bg-gray-100 text-gray-800";
     };
 
+    const getWinnerMedal = (index) => {
+        const medals = ["🥇", "🥈", "🥉"];
+        return medals[index] || "🏆";
+    };
+
     return (
         <AuthenticatedLayout
             header={
@@ -194,37 +236,39 @@ export default function Start({
                             </p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <button
-                            onClick={() => setShowPauseModal(true)}
-                            disabled={loading}
-                            className={`inline-flex items-center px-4 py-2 ${
-                                gameData.can_resume
-                                    ? "bg-green-600 hover:bg-green-700"
-                                    : "bg-orange-600 hover:bg-orange-700"
-                            } disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors duration-200 shadow-sm`}
-                        >
-                            {gameData.can_resume ? (
-                                <>
-                                    <LuPlay className="w-4 h-4 mr-2" />
-                                    Resume
-                                </>
-                            ) : (
-                                <>
-                                    <LuPause className="w-4 h-4 mr-2" />
-                                    Pause
-                                </>
-                            )}
-                        </button>
-                        <button
-                            onClick={() => setShowEndModal(true)}
-                            disabled={loading}
-                            className="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors duration-200 shadow-sm"
-                        >
-                            <MdOutlineStopCircle className="w-4 h-4 mr-2" />
-                            End Game
-                        </button>
-                    </div>
+                    {gameData.status != "finished" && (
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => setShowPauseModal(true)}
+                                disabled={loading}
+                                className={`inline-flex items-center px-4 py-2 ${
+                                    gameData.can_resume
+                                        ? "bg-green-600 hover:bg-green-700"
+                                        : "bg-orange-600 hover:bg-orange-700"
+                                } disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors duration-200 shadow-sm`}
+                            >
+                                {gameData.can_resume ? (
+                                    <>
+                                        <LuPlay className="w-4 h-4 mr-2" />
+                                        Resume
+                                    </>
+                                ) : (
+                                    <>
+                                        <LuPause className="w-4 h-4 mr-2" />
+                                        Pause
+                                    </>
+                                )}
+                            </button>
+                            <button
+                                onClick={() => setShowEndModal(true)}
+                                disabled={loading}
+                                className="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors duration-200 shadow-sm"
+                            >
+                                <MdOutlineStopCircle className="w-4 h-4 mr-2" />
+                                End Game
+                            </button>
+                        </div>
+                    )}
                 </div>
             }
         >
@@ -269,12 +313,14 @@ export default function Start({
                                         <div className="text-center py-12">
                                             <LuMic className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                                             <p className="text-gray-600 text-lg">
-                                                Handa nang tawagin ang unang salita
+                                                Handa nang tawagin ang unang
+                                                salita
                                             </p>
                                         </div>
                                     )}
 
-                                    <div className="flex justify-center">
+                                    {gameData.status != "finished" && (
+                                        <div className="flex justify-center">
                                         <button
                                             onClick={handleCallNextWord}
                                             disabled={loading}
@@ -292,6 +338,7 @@ export default function Start({
                                             </span>
                                         </button>
                                     </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -389,16 +436,16 @@ export default function Start({
 
                                     <div className="space-y-3">
                                         <div className="flex items-center justify-between">
-                                                <span className="text-sm text-gray-600">
+                                            <span className="text-sm text-gray-600">
                                                 Katayuan
                                             </span>
-                                                <div className="inline-flex items-center px-3 py-1 rounded-lg text-xs font-medium bg-green-100 text-green-800">
+                                            <div className="inline-flex items-center px-3 py-1 rounded-lg text-xs font-medium bg-green-100 text-green-800">
                                                 <LuPlay className="w-3 h-3 mr-1" />
                                                 Aktibo
                                             </div>
                                         </div>
                                         <div className="flex items-center justify-between">
-                                                <span className="text-sm text-gray-600">
+                                            <span className="text-sm text-gray-600">
                                                 Nagsimula
                                             </span>
                                             <span className="text-sm text-gray-900">
@@ -409,7 +456,7 @@ export default function Start({
                                             </span>
                                         </div>
                                         <div className="flex items-center justify-between">
-                                                <span className="text-sm text-gray-600">
+                                            <span className="text-sm text-gray-600">
                                                 Word Bank
                                             </span>
                                             <span className="text-sm text-gray-900">
@@ -424,7 +471,7 @@ export default function Start({
                             <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                                 <div className="p-6">
                                     <div className="flex items-center justify-between mb-4">
-                                            <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                                        <h3 className="text-lg font-semibold text-gray-900 flex items-center">
                                             <LuUsers className="w-5 h-5 mr-2" />
                                             Mga Manlalaro
                                         </h3>
@@ -495,6 +542,68 @@ export default function Start({
                                     </div>
                                 </div>
                             </div>
+
+                            {winners.length > 0 && (
+                                <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-lg shadow-sm border-2 border-yellow-200">
+                                    <div className="p-6">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                                                <LuTrophy className="w-5 h-5 mr-2 text-yellow-600" />
+                                                Mga Nanalo
+                                            </h3>
+                                            <LuCrown className="w-6 h-6 text-yellow-600" />
+                                        </div>
+
+                                        <div className="space-y-3 overflow-y-auto h-96">
+                                            {winners.map((winner, index) => (
+                                                <div
+                                                    key={winner.id}
+                                                    className={`flex items-center justify-between p-4 rounded-lg ${
+                                                        index === 0
+                                                            ? "bg-yellow-100 border-2 border-yellow-300"
+                                                            : index === 1
+                                                            ? "bg-gray-100 border-2 border-gray-300"
+                                                            : index === 2
+                                                            ? "bg-orange-100 border-2 border-orange-300"
+                                                            : "bg-white border border-gray-200"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-2xl">
+                                                            {getWinnerMedal(
+                                                                index
+                                                            )}
+                                                        </span>
+                                                        <div>
+                                                            <div className="font-semibold text-gray-900">
+                                                                {winner.name}
+                                                            </div>
+                                                            <div className="text-xs text-gray-600">
+                                                                {winner.won_at &&
+                                                                    formatDate(
+                                                                        winner.won_at
+                                                                    )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <div className="text-sm font-medium text-gray-700">
+                                                            Rank #{index + 1}
+                                                        </div>
+                                                        {winner.play_time && (
+                                                            <div className="text-xs text-gray-500">
+                                                                {
+                                                                    winner.play_time
+                                                                }
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
