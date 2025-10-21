@@ -89,7 +89,7 @@ class PlayerController extends Controller
         $calledWords = $game->words()
             ->wherePivot('is_called', true)
             ->orderBy('game_words.called_at')
-            ->select('word', 'meaning')
+            ->select('word', 'meaning', 'picture_url')
             ->get()
             ->toArray();
 
