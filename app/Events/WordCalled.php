@@ -53,10 +53,11 @@ class WordCalled implements ShouldBroadcastNow
                 'status'    => $this->game->status,
             ],
             'current_word' => [
-                'id'        => $this->word->id,
-                'word'      => $this->word->word,
-                'meaning'   => $this->word->meaning,
-                'called_at' => now()->toISOString(),
+                'id'          => $this->word->id,
+                'word'        => $this->word->word,
+                'meaning'     => $this->word->meaning,
+                'picture_url' => $this->word->picture_url,
+                'called_at'   => now()->toISOString(),
             ],
             'statistics'   => [
                 'total_words'     => $this->statistics['total_words'],
