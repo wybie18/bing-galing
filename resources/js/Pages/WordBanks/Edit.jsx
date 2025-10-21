@@ -1,7 +1,7 @@
 import TextInput from "@/Components/TextInput";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { Head, useForm, router } from "@inertiajs/react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
     LuBookOpen,
     LuPlus,
@@ -10,6 +10,7 @@ import {
     LuX,
     LuArrowLeft,
     LuCircleAlert,
+    LuImage,
 } from "react-icons/lu";
 import { MdEdit } from "react-icons/md";
 
@@ -17,6 +18,8 @@ export default function Edit({ wordBank }) {
     const [words, setWords] = useState([]);
     const [showWordForm, setShowWordForm] = useState(false);
     const [editingWord, setEditingWord] = useState(null);
+    const [imagePreview, setImagePreview] = useState(null);
+    const fileInputRef = useRef(null);
 
     const { data, setData, put, processing, errors, reset } = useForm({
         name: wordBank.name || "",
@@ -27,6 +30,7 @@ export default function Edit({ wordBank }) {
     const [wordForm, setWordForm] = useState({
         word: "",
         meaning: "",
+        picture: null,
         is_active: true,
     });
 
@@ -38,8 +42,11 @@ export default function Edit({ wordBank }) {
                 id: word.id,
                 word: word.word,
                 meaning: word.meaning,
+                picture: null,
+                picturePreview: word.picture_url,
+                existingPictureUrl: word.picture_url,
                 is_active: word.is_active,
-                isExisting: true, // Flag to track existing vs new words
+                isExisting: true,
             }));
             setWords(formattedWords);
         }
@@ -59,13 +66,62 @@ export default function Edit({ wordBank }) {
         }
     };
 
+    const handleImageChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            if (!file.type.startsWith('image/')) {
+                setWordFormErrors((prev) => ({
+                    ...prev,
+                    picture: "Please select a valid image file",
+                }));
+                return;
+            }
+
+            if (file.size > 2048 * 1024) {
+                setWordFormErrors((prev) => ({
+                    ...prev,
+                    picture: "Image size must be less than 2MB",
+                }));
+                return;
+            }
+
+            setWordForm((prev) => ({
+                ...prev,
+                picture: file,
+            }));
+
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setImagePreview(reader.result);
+            };
+            reader.readAsDataURL(file);
+
+            if (wordFormErrors.picture) {
+                setWordFormErrors((prev) => ({
+                    ...prev,
+                    picture: "",
+                }));
+            }
+        }
+    };
+
+    const removeImage = () => {
+        setWordForm((prev) => ({
+            ...prev,
+            picture: null,
+        }));
+        setImagePreview(null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
+    };
+
     const validateWordForm = () => {
         const errors = {};
 
         if (!wordForm.word.trim()) {
             errors.word = "Word is required";
         } else {
-            // Check for duplicates, excluding the word being edited
             const duplicateExists = words.some(
                 (w) =>
                     w.word.toLowerCase() === wordForm.word.toLowerCase() &&
@@ -92,7 +148,6 @@ export default function Edit({ wordBank }) {
         }
 
         if (editingWord) {
-            // Update existing word
             setWords((prev) =>
                 prev.map((w) =>
                     w.id === editingWord.id
@@ -100,6 +155,9 @@ export default function Edit({ wordBank }) {
                               ...w,
                               word: wordForm.word.trim(),
                               meaning: wordForm.meaning.trim(),
+                              picture: wordForm.picture || w.picture,
+                              picturePreview: imagePreview || w.picturePreview,
+                              existingPictureUrl: wordForm.picture ? null : w.existingPictureUrl,
                               is_active: wordForm.is_active,
                           }
                         : w
@@ -107,13 +165,15 @@ export default function Edit({ wordBank }) {
             );
             setEditingWord(null);
         } else {
-            // Add new word
             const newWord = {
-                id: `new_${Date.now()}`, // Temporary ID for new words
+                id: `new_${Date.now()}`,
                 word: wordForm.word.trim(),
                 meaning: wordForm.meaning.trim(),
+                picture: wordForm.picture,
+                picturePreview: imagePreview,
+                existingPictureUrl: null,
                 is_active: wordForm.is_active,
-                isExisting: false, // Flag for new words
+                isExisting: false,
             };
             setWords((prev) => [...prev, newWord]);
         }
@@ -121,10 +181,15 @@ export default function Edit({ wordBank }) {
         setWordForm({
             word: "",
             meaning: "",
+            picture: null,
             is_active: true,
         });
+        setImagePreview(null);
         setWordFormErrors({});
         setShowWordForm(false);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
     };
 
     const removeWord = (wordId) => {
@@ -137,8 +202,10 @@ export default function Edit({ wordBank }) {
             setWordForm({
                 word: word.word,
                 meaning: word.meaning,
+                picture: word.picture,
                 is_active: word.is_active,
             });
+            setImagePreview(word.picturePreview);
             setEditingWord(word);
             setShowWordForm(true);
         }
@@ -147,23 +214,30 @@ export default function Edit({ wordBank }) {
     const handleSubmit = (e) => {
         e.preventDefault();
 
-        // Prepare words data for submission
-        const wordsData = words.map(({ id, isExisting, ...word }) => ({
-            ...word,
-            ...(isExisting && { id }), // Include ID only for existing words
-        }));
+        const formData = new FormData();
+        formData.append('_method', 'PUT');
+        formData.append('name', data.name);
+        formData.append('description', data.description || '');
+        formData.append('is_active', data.is_active ? '1' : '0');
 
-        router.put(
-            route("word-banks.update", wordBank.id),
-            {
-                ...data,
-                words: wordsData,
-            },
-            {
-                preserveState: true,
-                preserveScroll: true,
+        words.forEach((word, index) => {
+            if (word.isExisting) {
+                formData.append(`words[${index}][id]`, word.id);
             }
-        );
+            formData.append(`words[${index}][word]`, word.word);
+            formData.append(`words[${index}][meaning]`, word.meaning);
+            formData.append(`words[${index}][is_active]`, word.is_active ? '1' : '0');
+            
+            if (word.picture) {
+                formData.append(`words[${index}][picture]`, word.picture);
+            }
+        });
+
+        router.post(route("word-banks.update", wordBank.id), formData, {
+            preserveState: true,
+            preserveScroll: true,
+            forceFormData: true,
+        });
     };
 
     const cancelWordForm = () => {
@@ -172,9 +246,14 @@ export default function Edit({ wordBank }) {
         setWordForm({
             word: "",
             meaning: "",
+            picture: null,
             is_active: true,
         });
+        setImagePreview(null);
         setWordFormErrors({});
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
     };
 
     return (
@@ -220,7 +299,7 @@ export default function Edit({ wordBank }) {
                             </div>
                             <div className="p-6 space-y-4">
                                 <div>
-                                        <label
+                                    <label
                                         htmlFor="name"
                                         className="block text-sm font-medium text-gray-700 mb-2"
                                     >
@@ -307,11 +386,11 @@ export default function Edit({ wordBank }) {
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <h3 className="text-lg font-medium text-gray-900">
-                                            Words
+                                            Mga Salita
                                         </h3>
                                         <p className="text-sm text-gray-600">
-                                            Manage words in your word bank (
-                                            {words.length} words)
+                                            Pamahalaan ang mga salita sa iyong word bank (
+                                            {words.length} salita)
                                         </p>
                                     </div>
                                     {!showWordForm && (
@@ -323,7 +402,7 @@ export default function Edit({ wordBank }) {
                                             className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors"
                                         >
                                             <LuPlus className="w-4 h-4 mr-2" />
-                                            Add Word
+                                            Magdagdag ng Salita
                                         </button>
                                     )}
                                 </div>
@@ -347,61 +426,116 @@ export default function Edit({ wordBank }) {
                                                 <LuX className="w-5 h-5" />
                                             </button>
                                         </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        
+                                        <div className="space-y-4">
+                                            {/* Image Upload */}
                                             <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Larawan (Opsyonal)
+                                                </label>
+                                                
+                                                {imagePreview ? (
+                                                    <div className="relative inline-block">
+                                                        <img
+                                                            src={imagePreview}
+                                                            alt="Preview"
+                                                            className="w-32 h-32 object-cover rounded-lg border-2 border-gray-300"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={removeImage}
+                                                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                                                        >
+                                                            <LuX className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-3">
+                                                        <input
+                                                            ref={fileInputRef}
+                                                            type="file"
+                                                            accept="image/*"
+                                                            onChange={handleImageChange}
+                                                            className="hidden"
+                                                            id="picture-upload"
+                                                        />
+                                                        <label
+                                                            htmlFor="picture-upload"
+                                                            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer transition-colors"
+                                                        >
+                                                            <LuImage className="w-5 h-5 mr-2" />
+                                                            Pumili ng Larawan
+                                                        </label>
+                                                        <span className="text-sm text-gray-500">
+                                                            PNG, JPG, GIF hanggang 2MB
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                
+                                                {wordFormErrors.picture && (
+                                                    <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                                                        <LuCircleAlert className="w-4 h-4" />
+                                                        {wordFormErrors.picture}
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            {/* Word and Meaning */}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div>
                                                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                    Salita *
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={wordForm.word}
-                                                    onChange={(e) =>
-                                                        handleWordFormChange(
-                                                            "word",
-                                                            e.target.value
-                                                        )
-                                                    }
-                                                    className={`block w-full px-3 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                                                        wordFormErrors.word
-                                                            ? "border-red-300"
-                                                            : "border-gray-300"
-                                                    }`}
-                                                    placeholder="Ilagay ang salita"
-                                                />
-                                                {wordFormErrors.word && (
-                                                    <p className="mt-1 text-sm text-red-600">
-                                                        {wordFormErrors.word}
-                                                    </p>
-                                                )}
+                                                        Salita *
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={wordForm.word}
+                                                        onChange={(e) =>
+                                                            handleWordFormChange(
+                                                                "word",
+                                                                e.target.value
+                                                            )
+                                                        }
+                                                        className={`block w-full px-3 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                                                            wordFormErrors.word
+                                                                ? "border-red-300"
+                                                                : "border-gray-300"
+                                                        }`}
+                                                        placeholder="Ilagay ang salita"
+                                                    />
+                                                    {wordFormErrors.word && (
+                                                        <p className="mt-1 text-sm text-red-600">
+                                                            {wordFormErrors.word}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                        Kahulugan *
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={wordForm.meaning}
+                                                        onChange={(e) =>
+                                                            handleWordFormChange(
+                                                                "meaning",
+                                                                e.target.value
+                                                            )
+                                                        }
+                                                        className={`block w-full px-3 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                                                            wordFormErrors.meaning
+                                                                ? "border-red-300"
+                                                                : "border-gray-300"
+                                                        }`}
+                                                        placeholder="Ilagay ang kahulugan"
+                                                    />
+                                                    {wordFormErrors.meaning && (
+                                                        <p className="mt-1 text-sm text-red-600">
+                                                            {wordFormErrors.meaning}
+                                                        </p>
+                                                    )}
+                                                </div>
                                             </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                    Kahulugan *
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={wordForm.meaning}
-                                                    onChange={(e) =>
-                                                        handleWordFormChange(
-                                                            "meaning",
-                                                            e.target.value
-                                                        )
-                                                    }
-                                                    className={`block w-full px-3 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                                                        wordFormErrors.meaning
-                                                            ? "border-red-300"
-                                                            : "border-gray-300"
-                                                    }`}
-                                                    placeholder="Ilagay ang kahulugan"
-                                                />
-                                                {wordFormErrors.meaning && (
-                                                    <p className="mt-1 text-sm text-red-600">
-                                                        {wordFormErrors.meaning}
-                                                    </p>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="mt-4">
+
                                             <div className="flex items-center">
                                                 <input
                                                     type="checkbox"
@@ -423,6 +557,7 @@ export default function Edit({ wordBank }) {
                                                 </label>
                                             </div>
                                         </div>
+
                                         <div className="flex justify-end space-x-3 mt-4">
                                             <button
                                                 type="button"
@@ -456,7 +591,16 @@ export default function Edit({ wordBank }) {
                                                         : "border-gray-200"
                                                 }`}
                                             >
-                                                <div className="flex items-start justify-between">
+                                                <div className="flex items-start justify-between gap-4">
+                                                    {/* Image Preview */}
+                                                    {word.picturePreview && (
+                                                        <img
+                                                            src={word.picturePreview}
+                                                            alt={word.word}
+                                                            className="w-20 h-20 object-cover rounded-lg border border-gray-200"
+                                                        />
+                                                    )}
+                                                    
                                                     <div className="flex-1">
                                                         <div className="flex items-center gap-3 mb-2">
                                                             <h4 className="text-lg font-semibold text-gray-900">
@@ -485,7 +629,14 @@ export default function Edit({ wordBank }) {
                                                         <p className="text-gray-700 mb-2">
                                                             {word.meaning}
                                                         </p>
+                                                        {(word.picture || word.existingPictureUrl) && (
+                                                            <p className="text-sm text-gray-500 flex items-center gap-1">
+                                                                <LuImage className="w-4 h-4" />
+                                                                May larawan
+                                                            </p>
+                                                        )}
                                                     </div>
+                                                    
                                                     <div className="flex items-center space-x-2">
                                                         <button
                                                             type="button"
