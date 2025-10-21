@@ -1,7 +1,7 @@
 import TextInput from "@/Components/TextInput";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { Head, useForm, router } from "@inertiajs/react";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
     LuBookOpen,
     LuPlus,
@@ -16,6 +16,8 @@ import {
 export default function Create() {
     const [words, setWords] = useState([]);
     const [showWordForm, setShowWordForm] = useState(false);
+    const [imagePreview, setImagePreview] = useState(null);
+    const fileInputRef = useRef(null);
 
     const { data, setData, post, processing, errors, reset } = useForm({
         name: "",
@@ -27,6 +29,7 @@ export default function Create() {
     const [wordForm, setWordForm] = useState({
         word: "",
         meaning: "",
+        picture: null,
         is_active: true,
     });
 
@@ -43,6 +46,60 @@ export default function Create() {
                 ...prev,
                 [field]: "",
             }));
+        }
+    };
+
+    const handleImageChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            // Validate file type
+            if (!file.type.startsWith("image/")) {
+                setWordFormErrors((prev) => ({
+                    ...prev,
+                    picture: "Please select a valid image file",
+                }));
+                return;
+            }
+
+            // Validate file size (2MB)
+            if (file.size > 2048 * 1024) {
+                setWordFormErrors((prev) => ({
+                    ...prev,
+                    picture: "Image size must be less than 2MB",
+                }));
+                return;
+            }
+
+            setWordForm((prev) => ({
+                ...prev,
+                picture: file,
+            }));
+
+            // Create preview
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setImagePreview(reader.result);
+            };
+            reader.readAsDataURL(file);
+
+            // Clear error
+            if (wordFormErrors.picture) {
+                setWordFormErrors((prev) => ({
+                    ...prev,
+                    picture: "",
+                }));
+            }
+        }
+    };
+
+    const removeImage = () => {
+        setWordForm((prev) => ({
+            ...prev,
+            picture: null,
+        }));
+        setImagePreview(null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
         }
     };
 
@@ -76,19 +133,26 @@ export default function Create() {
 
         const newWord = {
             id: Date.now(),
-            ...wordForm,
             word: wordForm.word.trim(),
             meaning: wordForm.meaning.trim(),
+            picture: wordForm.picture,
+            picturePreview: imagePreview,
+            is_active: wordForm.is_active,
         };
 
         setWords((prev) => [...prev, newWord]);
         setWordForm({
             word: "",
             meaning: "",
+            picture: null,
             is_active: true,
         });
+        setImagePreview(null);
         setWordFormErrors({});
         setShowWordForm(false);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
     };
 
     const removeWord = (wordId) => {
@@ -101,8 +165,10 @@ export default function Create() {
             setWordForm({
                 word: word.word,
                 meaning: word.meaning,
+                picture: word.picture,
                 is_active: word.is_active,
             });
+            setImagePreview(word.picturePreview);
             setWords((prev) => prev.filter((w) => w.id !== wordId));
             setShowWordForm(true);
         }
@@ -111,19 +177,30 @@ export default function Create() {
     const handleSubmit = (e) => {
         e.preventDefault();
 
-        const wordsData = words.map(({ id, ...word }) => word);
+        const formData = new FormData();
+        formData.append("name", data.name);
+        formData.append("description", data.description || "");
+        formData.append("is_active", data.is_active ? "1" : "0");
 
-        router.post(
-            route("word-banks.store"),
-            {
-                ...data,
-                words: wordsData,
-            },
-            {
-                preserveState: true,
-                preserveScroll: true,
+        // Append words with their images
+        words.forEach((word, index) => {
+            formData.append(`words[${index}][word]`, word.word);
+            formData.append(`words[${index}][meaning]`, word.meaning);
+            formData.append(
+                `words[${index}][is_active]`,
+                word.is_active ? "1" : "0"
+            );
+
+            if (word.picture) {
+                formData.append(`words[${index}][picture]`, word.picture);
             }
-        );
+        });
+
+        router.post(route("word-banks.store"), formData, {
+            preserveState: true,
+            preserveScroll: true,
+            forceFormData: true,
+        });
     };
 
     const cancelWordForm = () => {
@@ -131,9 +208,14 @@ export default function Create() {
         setWordForm({
             word: "",
             meaning: "",
+            picture: null,
             is_active: true,
         });
+        setImagePreview(null);
         setWordFormErrors({});
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
     };
 
     return (
@@ -150,11 +232,12 @@ export default function Create() {
                         <LuBookOpen className="w-8 h-8 text-blue-600" />
                         <div>
                             <h2 className="text-xl font-semibold leading-tight text-gray-800">
-                                    Gumawa ng Word Bank
-                                </h2>
-                                <p className="text-sm text-gray-600">
-                                    Gumawa ng bagong koleksyon ng salita para sa edukasyon
-                                </p>
+                                Gumawa ng Word Bank
+                            </h2>
+                            <p className="text-sm text-gray-600">
+                                Gumawa ng bagong koleksyon ng salita para sa
+                                edukasyon
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -172,12 +255,13 @@ export default function Create() {
                                     Impormasyon ng Word Bank
                                 </h3>
                                 <p className="text-sm text-gray-600">
-                                    Pangunahing detalye tungkol sa iyong word bank
+                                    Pangunahing detalye tungkol sa iyong word
+                                    bank
                                 </p>
                             </div>
                             <div className="p-6 space-y-4">
                                 <div>
-                                        <label
+                                    <label
                                         htmlFor="name"
                                         className="block text-sm font-medium text-gray-700 mb-2"
                                     >
@@ -267,8 +351,8 @@ export default function Create() {
                                             Mga Salita
                                         </h3>
                                         <p className="text-sm text-gray-600">
-                                            Magdagdag ng mga salita sa iyong word bank (
-                                            {words.length} salita)
+                                            Magdagdag ng mga salita sa iyong
+                                            word bank ({words.length} salita)
                                         </p>
                                     </div>
                                     {!showWordForm && (
@@ -302,60 +386,126 @@ export default function Create() {
                                                 <LuX className="w-5 h-5" />
                                             </button>
                                         </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                                        <div className="space-y-4">
+                                            {/* Image Upload */}
                                             <div>
-                                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                    Salita *
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Larawan (Opsyonal)
                                                 </label>
-                                                <input
-                                                    type="text"
-                                                    value={wordForm.word}
-                                                    onChange={(e) =>
-                                                        handleWordFormChange(
-                                                            "word",
-                                                            e.target.value
-                                                        )
-                                                    }
-                                                    className={`block w-full px-3 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                                                        wordFormErrors.word
-                                                            ? "border-red-300"
-                                                            : "border-gray-300"
-                                                    }`}
-                                                    placeholder="Ilagay ang salita"
-                                                />
-                                                {wordFormErrors.word && (
-                                                    <p className="mt-1 text-sm text-red-600">
-                                                        {wordFormErrors.word}
+
+                                                {imagePreview ? (
+                                                    <div className="relative inline-block">
+                                                        <img
+                                                            src={imagePreview}
+                                                            alt="Preview"
+                                                            className="w-32 h-32 object-cover rounded-lg border-2 border-gray-300"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={
+                                                                removeImage
+                                                            }
+                                                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                                                        >
+                                                            <LuX className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-3">
+                                                        <input
+                                                            ref={fileInputRef}
+                                                            type="file"
+                                                            accept="image/*"
+                                                            onChange={
+                                                                handleImageChange
+                                                            }
+                                                            className="hidden"
+                                                            id="picture-upload"
+                                                        />
+                                                        <label
+                                                            htmlFor="picture-upload"
+                                                            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer transition-colors"
+                                                        >
+                                                            <LuImage className="w-5 h-5 mr-2" />
+                                                            Pumili ng Larawan
+                                                        </label>
+                                                        <span className="text-sm text-gray-500">
+                                                            PNG, JPG, GIF
+                                                            hanggang 2MB
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                {wordFormErrors.picture && (
+                                                    <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                                                        <LuCircleAlert className="w-4 h-4" />
+                                                        {wordFormErrors.picture}
                                                     </p>
                                                 )}
                                             </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                    Kahulugan *
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={wordForm.meaning}
-                                                    onChange={(e) =>
-                                                        handleWordFormChange(
-                                                            "meaning",
-                                                            e.target.value
-                                                        )
-                                                    }
-                                                    className={`block w-full px-3 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                                                        wordFormErrors.meaning
-                                                            ? "border-red-300"
-                                                            : "border-gray-300"
-                                                    }`}
-                                                    placeholder="Ilagay ang kahulugan"
-                                                />
-                                                {wordFormErrors.meaning && (
-                                                    <p className="mt-1 text-sm text-red-600">
-                                                        {wordFormErrors.meaning}
-                                                    </p>
-                                                )}
+
+                                            {/* Word and Meaning */}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                        Salita *
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={wordForm.word}
+                                                        onChange={(e) =>
+                                                            handleWordFormChange(
+                                                                "word",
+                                                                e.target.value
+                                                            )
+                                                        }
+                                                        className={`block w-full px-3 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                                                            wordFormErrors.word
+                                                                ? "border-red-300"
+                                                                : "border-gray-300"
+                                                        }`}
+                                                        placeholder="Ilagay ang salita"
+                                                    />
+                                                    {wordFormErrors.word && (
+                                                        <p className="mt-1 text-sm text-red-600">
+                                                            {
+                                                                wordFormErrors.word
+                                                            }
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                        Kahulugan *
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={wordForm.meaning}
+                                                        onChange={(e) =>
+                                                            handleWordFormChange(
+                                                                "meaning",
+                                                                e.target.value
+                                                            )
+                                                        }
+                                                        className={`block w-full px-3 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                                                            wordFormErrors.meaning
+                                                                ? "border-red-300"
+                                                                : "border-gray-300"
+                                                        }`}
+                                                        placeholder="Ilagay ang kahulugan"
+                                                    />
+                                                    {wordFormErrors.meaning && (
+                                                        <p className="mt-1 text-sm text-red-600">
+                                                            {
+                                                                wordFormErrors.meaning
+                                                            }
+                                                        </p>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
+
                                         <div className="flex justify-end space-x-3 mt-4">
                                             <button
                                                 type="button"
@@ -383,7 +533,18 @@ export default function Create() {
                                                 key={word.id}
                                                 className="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow"
                                             >
-                                                <div className="flex items-start justify-between">
+                                                <div className="flex items-start justify-between gap-4">
+                                                    {/* Image Preview */}
+                                                    {word.picturePreview && (
+                                                        <img
+                                                            src={
+                                                                word.picturePreview
+                                                            }
+                                                            alt={word.word}
+                                                            className="w-20 h-20 object-cover rounded-lg border border-gray-200"
+                                                        />
+                                                    )}
+
                                                     <div className="flex-1">
                                                         <div className="flex items-center gap-3 mb-2">
                                                             <h4 className="text-lg font-semibold text-gray-900">
@@ -404,7 +565,14 @@ export default function Create() {
                                                         <p className="text-gray-700 mb-2">
                                                             {word.meaning}
                                                         </p>
+                                                        {word.picture && (
+                                                            <p className="text-sm text-gray-500 flex items-center gap-1">
+                                                                <LuImage className="w-4 h-4" />
+                                                                May larawan
+                                                            </p>
+                                                        )}
                                                     </div>
+
                                                     <div className="flex items-center space-x-2">
                                                         <button
                                                             type="button"
@@ -442,8 +610,9 @@ export default function Create() {
                                             Walang idinagdag na salita
                                         </h3>
                                         <p className="mt-1 text-sm text-gray-500">
-                                            Magsimula sa pamamagitan ng pagdagdag ng
-                                            unang salita sa koleksyon.
+                                            Magsimula sa pamamagitan ng
+                                            pagdagdag ng unang salita sa
+                                            koleksyon.
                                         </p>
                                         <div className="mt-6">
                                             <button
