@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 class Word extends Model
 {
     protected $fillable = [
-        'word_bank_id', 'word', 'meaning', 'is_active',
+        'word_bank_id', 'word', 'picture_url', 'meaning', 'is_active',
     ];
 
     protected $casts = [
