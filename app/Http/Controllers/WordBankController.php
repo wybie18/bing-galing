@@ -6,6 +6,7 @@ use App\Models\WordBank;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
@@ -32,7 +33,7 @@ class WordBankController extends Controller
                     });
             });
         }
-        
+
         if ($request->filled('filter') && $request->filter === 'my_wordbanks') {
             $query->where('teacher_id', Auth::id());
         }
@@ -66,15 +67,15 @@ class WordBankController extends Controller
         $wordBanks = $query->paginate(12);
 
         $wordBanks->getCollection()->transform(function ($wordBank) {
-            $wordBank->is_owner = $wordBank->teacher_id === Auth::id();
+            $wordBank->is_owner   = $wordBank->teacher_id === Auth::id();
             $wordBank->word_count = $wordBank->words_count ?? $wordBank->words->count();
             return $wordBank;
         });
 
         return Inertia::render('WordBanks/Index', [
-            'wordBanks'    => $wordBanks,
-            'filters' => $request->only(['search', 'queryFilter']) ?: [],
-            'queryParams'  => request()->query() ?: null,
+            'wordBanks'   => $wordBanks,
+            'filters'     => $request->only(['search', 'queryFilter']) ?: [],
+            'queryParams' => request()->query() ?: null,
         ]);
     }
 
@@ -107,6 +108,7 @@ class WordBankController extends Controller
             'is_active'         => 'boolean',
             'words'             => 'array',
             'words.*.word'      => 'required|string|max:255',
+            'words.*.picture'   => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
             'words.*.meaning'   => 'required|string|max:1000',
             'words.*.is_active' => 'boolean',
         ]);
@@ -121,8 +123,21 @@ class WordBankController extends Controller
         ]);
 
         if (! empty($validated['words'])) {
-            foreach ($validated['words'] as $wordData) {
-                $wordBank->words()->create($wordData);
+            foreach ($validated['words'] as $index => $wordData) {
+                $pictureUrl = null;
+
+                if ($request->hasFile("words.{$index}.picture")) {
+                    $file       = $request->file("words.{$index}.picture");
+                    $path       = $file->store('word-pictures', 'public');
+                    $pictureUrl = Storage::url($path);
+                }
+
+                $wordBank->words()->create([
+                    'word'        => $wordData['word'],
+                    'picture_url' => $pictureUrl,
+                    'meaning'     => $wordData['meaning'],
+                    'is_active'   => $wordData['is_active'] ?? true,
+                ]);
             }
         }
 
@@ -137,7 +152,6 @@ class WordBankController extends Controller
     {
         $wordBank->load(['teacher:id,name']);
 
-        // Get words with optional search
         $wordsQuery = $wordBank->words();
 
         if ($request->filled('search')) {
@@ -201,6 +215,7 @@ class WordBankController extends Controller
             'words'             => 'array',
             'words.*.id'        => 'sometimes|exists:words,id',
             'words.*.word'      => 'required|string|max:255',
+            'words.*.picture'   => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
             'words.*.meaning'   => 'required|string|max:1000',
             'words.*.is_active' => 'boolean',
         ]);
@@ -218,17 +233,54 @@ class WordBankController extends Controller
                 ->filter(fn($word) => isset($word['id']))
                 ->pluck('id');
 
-            $wordBank->words()
+            $removedWords = $wordBank->words()
                 ->whereNotIn('id', $currentWordIds)
-                ->delete();
+                ->get();
 
-            foreach ($validated['words'] as $wordData) {
+            foreach ($removedWords as $word) {
+                if ($word->picture_url) {
+                    $this->deleteImage($word->picture_url);
+                }
+                $word->delete();
+            }
+
+            foreach ($validated['words'] as $index => $wordData) {
+                $pictureUrl = null;
+
                 if (isset($wordData['id'])) {
-                    $wordBank->words()
-                        ->where('id', $wordData['id'])
-                        ->update(collect($wordData)->except('id')->toArray());
+                    $word = $wordBank->words()->find($wordData['id']);
+
+                    if ($request->hasFile("words.{$index}.picture")) {
+                        if ($word->picture_url) {
+                            $this->deleteImage($word->picture_url);
+                        }
+
+                        $file       = $request->file("words.{$index}.picture");
+                        $path       = $file->store('word-pictures', 'public');
+                        $pictureUrl = Storage::url($path);
+                    } else {
+                        $pictureUrl = $word->picture_url;
+                    }
+
+                    $word->update([
+                        'word'        => $wordData['word'],
+                        'picture_url' => $pictureUrl,
+                        'meaning'     => $wordData['meaning'],
+                        'is_active'   => $wordData['is_active'] ?? true,
+                    ]);
                 } else {
-                    $wordBank->words()->create($wordData);
+                    if ($request->hasFile("words.{$index}.picture")) {
+                        $file       = $request->file("words.{$index}.picture");
+                        $path       = $file->store('word-pictures', 'public');
+                        $pictureUrl = Storage::url($path);
+                    }
+
+                    $wordBank->words()->create([
+                        'word'        => $wordData['word'],
+                        'picture_url' => $pictureUrl,
+                        'meaning'     => $wordData['meaning'],
+                        'is_active'   => $wordData['is_active'] ?? true,
+                    ]);
                 }
             }
         }
@@ -244,6 +296,12 @@ class WordBankController extends Controller
     {
         if ($wordBank->teacher_id !== Auth::id()) {
             abort(403, 'You can only delete your own word banks.');
+        }
+
+        foreach ($wordBank->words as $word) {
+            if ($word->picture_url) {
+                $this->deleteImage($word->picture_url);
+            }
         }
 
         $wordBank->delete();
@@ -271,16 +329,26 @@ class WordBankController extends Controller
                     return $query->where('word_bank_id', $wordBank->id);
                 }),
             ],
+            'picture'   => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
             'meaning'   => 'required|string|max:1000',
             'is_active' => 'boolean',
         ], [
             'word.unique' => 'This word already exists in this word bank.',
         ]);
 
+        $pictureUrl = null;
+
+        if ($request->hasFile('picture')) {
+            $file       = $request->file('picture');
+            $path       = $file->store('word-pictures', 'public');
+            $pictureUrl = Storage::url($path);
+        }
+
         $word = $wordBank->words()->create([
-            'word'      => $validated['word'],
-            'meaning'   => $validated['meaning'],
-            'is_active' => $validated['is_active'] ?? true,
+            'word'        => $validated['word'],
+            'picture_url' => $pictureUrl,
+            'meaning'     => $validated['meaning'],
+            'is_active'   => $validated['is_active'] ?? true,
         ]);
 
         return back()->with('success', 'Word added successfully!');
@@ -297,7 +365,7 @@ class WordBankController extends Controller
         }
 
         $validated = $request->validate([
-            'word'      => [
+            'word'           => [
                 'required',
                 'string',
                 'max:255',
@@ -305,13 +373,39 @@ class WordBankController extends Controller
                     return $query->where('word_bank_id', $wordBank->id);
                 })->ignore($word->id),
             ],
-            'meaning'   => 'required|string|max:1000',
-            'is_active' => 'boolean',
+            'picture'        => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
+            'remove_picture' => 'nullable|boolean',
+            'meaning'        => 'required|string|max:1000',
+            'is_active'      => 'boolean',
         ], [
             'word.unique' => 'This word already exists in this word bank.',
         ]);
 
-        $word->update($validated);
+        $pictureUrl = $word->picture_url;
+
+        if ($request->input('remove_picture') === true || $request->input('remove_picture') === '1') {
+            if ($word->picture_url) {
+                $this->deleteImage($word->picture_url);
+            }
+            $pictureUrl = null;
+        }
+
+        if ($request->hasFile('picture')) {
+            if ($word->picture_url) {
+                $this->deleteImage($word->picture_url);
+            }
+
+            $file       = $request->file('picture');
+            $path       = $file->store('word-pictures', 'public');
+            $pictureUrl = Storage::url($path);
+        }
+
+        $word->update([
+            'word'        => $validated['word'],
+            'picture_url' => $pictureUrl,
+            'meaning'     => $validated['meaning'],
+            'is_active'   => $validated['is_active'] ?? true,
+        ]);
 
         return back()->with('success', 'Word updated successfully!');
     }
@@ -324,6 +418,10 @@ class WordBankController extends Controller
     {
         if ($wordBank->teacher_id !== Auth::id() || $word->word_bank_id !== $wordBank->id) {
             abort(403, 'You can only delete words from your own word banks.');
+        }
+
+        if ($word->picture_url) {
+            $this->deleteImage($word->picture_url);
         }
 
         $word->delete();
@@ -362,14 +460,53 @@ class WordBankController extends Controller
 
         $originalWords = $wordBank->words()->where('is_active', true)->get();
         foreach ($originalWords as $originalWord) {
+            $pictureUrl = null;
+
+            // Copy image if exists
+            if ($originalWord->picture_url) {
+                $pictureUrl = $this->copyImage($originalWord->picture_url);
+            }
+
             $duplicatedWordBank->words()->create([
-                'word'      => $originalWord->word,
-                'meaning'   => $originalWord->meaning,
-                'is_active' => true,
+                'word'        => $originalWord->word,
+                'picture_url' => $pictureUrl,
+                'meaning'     => $originalWord->meaning,
+                'is_active'   => true,
             ]);
         }
 
         return redirect()->route('word-banks.show', $duplicatedWordBank)
             ->with('success', 'Word bank duplicated successfully! You can now modify it as your own.');
+    }
+
+    /**
+     * Delete an image from storage.
+     */
+    private function deleteImage($pictureUrl)
+    {
+        $path = str_replace('/storage/', '', $pictureUrl);
+
+        if (Storage::disk('public')->exists($path)) {
+            Storage::disk('public')->delete($path);
+        }
+    }
+
+    /**
+     * Copy an image to a new location for duplication.
+     */
+    private function copyImage($pictureUrl)
+    {
+        $oldPath = str_replace('/storage/', '', $pictureUrl);
+
+        if (Storage::disk('public')->exists($oldPath)) {
+            $extension = pathinfo($oldPath, PATHINFO_EXTENSION);
+            $newPath   = 'word-pictures/' . uniqid() . '.' . $extension;
+
+            Storage::disk('public')->copy($oldPath, $newPath);
+
+            return Storage::url($newPath);
+        }
+
+        return null;
     }
 }
