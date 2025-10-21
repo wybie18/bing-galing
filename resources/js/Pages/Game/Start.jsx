@@ -299,12 +299,33 @@ export default function Start({
 
                                     {currentWord ? (
                                         <div className="text-center">
-                                            <div className="w-32 h-32 mx-auto bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center mb-4">
-                                                <span className="text-3xl font-bold text-white">
-                                                    {currentWord.word ||
-                                                        "Tawagin ang unang salita"}
-                                                </span>
-                                            </div>
+                                            {currentWord.picture_url ? (
+                                                <div className="mb-6">
+                                                    <img
+                                                        src={
+                                                            currentWord.picture_url
+                                                        }
+                                                        alt={currentWord.word}
+                                                        className="w-64 h-64 mx-auto object-cover rounded-xl shadow-lg border-4 border-blue-200"
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <div className="w-32 h-32 mx-auto bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center mb-4">
+                                                    <span className="text-3xl font-bold text-white">
+                                                        {currentWord.word ||
+                                                            "Tawagin ang unang salita"}
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            {/* Word Text */}
+                                            {currentWord.picture_url && (
+                                                <div className="text-4xl font-bold text-gray-900 mb-4">
+                                                    {currentWord.word}
+                                                </div>
+                                            )}
+
+                                            {/* Word Meaning */}
                                             <p className="text-gray-600 text-lg mb-6">
                                                 {currentWord.meaning || ""}
                                             </p>
@@ -321,23 +342,23 @@ export default function Start({
 
                                     {gameData.status != "finished" && (
                                         <div className="flex justify-center">
-                                        <button
-                                            onClick={handleCallNextWord}
-                                            disabled={loading}
-                                            className="inline-flex items-center px-8 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors duration-200 shadow-sm text-lg"
-                                        >
-                                            {loading ? (
-                                                <LuRefreshCw className="w-5 h-5 mr-3 animate-spin ml-2" />
-                                            ) : (
-                                                <LuSkipForward className="w-5 h-5 mr-3 ml-2" />
-                                            )}
-                                            <span className="mr-2">
-                                                {currentWord
-                                                    ? "Tawagin ang Susunod na Salita"
-                                                    : "Tawagin ang Unang Salita"}
-                                            </span>
-                                        </button>
-                                    </div>
+                                            <button
+                                                onClick={handleCallNextWord}
+                                                disabled={loading}
+                                                className="inline-flex items-center px-8 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors duration-200 shadow-sm text-lg"
+                                            >
+                                                {loading ? (
+                                                    <LuRefreshCw className="w-5 h-5 mr-3 animate-spin ml-2" />
+                                                ) : (
+                                                    <LuSkipForward className="w-5 h-5 mr-3 ml-2" />
+                                                )}
+                                                <span className="mr-2">
+                                                    {currentWord
+                                                        ? "Tawagin ang Susunod na Salita"
+                                                        : "Tawagin ang Unang Salita"}
+                                                </span>
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                             </div>
