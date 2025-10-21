@@ -1,6 +1,6 @@
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { Head, Link, router } from "@inertiajs/react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
     LuBookOpen,
     LuCalendar,
@@ -14,6 +14,7 @@ import {
     LuX,
     LuToggleLeft,
     LuToggleRight,
+    LuImage,
 } from "react-icons/lu";
 import { HiMagnifyingGlass, HiMiniDocumentDuplicate } from "react-icons/hi2";
 import WordForm from "./WordForm";
@@ -31,9 +32,16 @@ export default function Show({
     const [newWord, setNewWord] = useState({
         word: "",
         meaning: "",
+        picture: null,
+        remove_picture: false,
         is_active: true,
     });
     const [errors, setErrors] = useState({});
+
+    const [newWordImagePreview, setNewWordImagePreview] = useState(null);
+    const [editWordImagePreview, setEditWordImagePreview] = useState(null);
+    const fileInputRef = useRef(null);
+    const editFileInputRef = useRef(null);
 
     useEffect(() => {
         const delayedSearch = setTimeout(() => {
@@ -62,14 +70,133 @@ export default function Show({
         });
     };
 
+    // Add image change handlers
+    const handleNewImageChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            if (!file.type.startsWith("image/")) {
+                setErrors((prev) => ({
+                    ...prev,
+                    picture: "Please select a valid image file",
+                }));
+                return;
+            }
+
+            if (file.size > 2048 * 1024) {
+                setErrors((prev) => ({
+                    ...prev,
+                    picture: "Image size must be less than 2MB",
+                }));
+                return;
+            }
+
+            setNewWord((prev) => ({ ...prev, picture: file }));
+
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setNewWordImagePreview(reader.result);
+            };
+            reader.readAsDataURL(file);
+
+            if (errors.picture) {
+                setErrors((prev) => {
+                    const newErrors = { ...prev };
+                    delete newErrors.picture;
+                    return newErrors;
+                });
+            }
+        }
+    };
+
+    const handleEditImageChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            if (!file.type.startsWith("image/")) {
+                setErrors((prev) => ({
+                    ...prev,
+                    picture: "Please select a valid image file",
+                }));
+                return;
+            }
+
+            if (file.size > 2048 * 1024) {
+                setErrors((prev) => ({
+                    ...prev,
+                    picture: "Image size must be less than 2MB",
+                }));
+                return;
+            }
+
+            setEditingWord((prev) => ({ ...prev, picture: file }));
+
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setEditWordImagePreview(reader.result);
+            };
+            reader.readAsDataURL(file);
+
+            if (errors.picture) {
+                setErrors((prev) => {
+                    const newErrors = { ...prev };
+                    delete newErrors.picture;
+                    return newErrors;
+                });
+            }
+        }
+    };
+
+    const removeNewImage = () => {
+        setNewWord((prev) => ({
+            ...prev,
+            picture: null,
+            remove_picture: true,
+        }));
+        setNewWordImagePreview(null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
+    };
+
+    const removeEditImage = () => {
+        setEditingWord((prev) => ({
+            ...prev,
+            picture: null,
+            picture_url: null,
+            remove_picture: true,
+        }));
+        setEditWordImagePreview(null);
+        if (editFileInputRef.current) {
+            editFileInputRef.current.value = "";
+        }
+    };
+
     const handleAddWord = (e) => {
         e.preventDefault();
         setErrors({});
 
-        router.post(route("word-banks.words.store", wordBank.id), newWord, {
+        const formData = new FormData();
+        formData.append("word", newWord.word);
+        formData.append("meaning", newWord.meaning);
+        formData.append("is_active", newWord.is_active ? "1" : "0");
+
+        if (newWord.picture) {
+            formData.append("picture", newWord.picture);
+        }
+
+        router.post(route("word-banks.words.store", wordBank.id), formData, {
+            forceFormData: true,
             onSuccess: () => {
-                setNewWord({ word: "", meaning: "", is_active: true });
+                setNewWord({
+                    word: "",
+                    meaning: "",
+                    picture: null,
+                    is_active: true,
+                });
+                setNewWordImagePreview(null);
                 setShowAddWordForm(false);
+                if (fileInputRef.current) {
+                    fileInputRef.current.value = "";
+                }
             },
             onError: (errors) => {
                 setErrors(errors);
@@ -81,12 +208,31 @@ export default function Show({
         e.preventDefault();
         setErrors({});
 
-        router.put(
+        const formData = new FormData();
+        formData.append("_method", "PUT");
+        formData.append("word", editingWord.word);
+        formData.append("meaning", editingWord.meaning);
+        formData.append("is_active", editingWord.is_active ? "1" : "0");
+
+         if (editingWord.remove_picture) {
+            formData.append("remove_picture", "1");
+        }
+
+        if (editingWord.picture instanceof File) {
+            formData.append("picture", editingWord.picture);
+        }
+
+        router.post(
             route("word-banks.words.update", [wordBank.id, editingWord.id]),
-            editingWord,
+            formData,
             {
+                forceFormData: true,
                 onSuccess: () => {
                     setEditingWord(null);
+                    setEditWordImagePreview(null);
+                    if (editFileInputRef.current) {
+                        editFileInputRef.current.value = "";
+                    }
                 },
                 onError: (errors) => {
                     setErrors(errors);
@@ -236,16 +382,21 @@ export default function Show({
                                     setNewWord({
                                         word: "",
                                         meaning: "",
+                                        picture: null,
                                         is_active: true,
                                     });
+                                    setNewWordImagePreview(null);
                                     setErrors({});
                                 }}
-                                title="Add New Word"
-                                submitLabel="Add Word"
+                                title="Magdagdag ng Bagong Salita"
+                                submitLabel="Magdagdag ng Salita"
                                 errors={errors}
                                 onWordChange={handleNewWordChange}
                                 onMeaningChange={handleNewMeaningChange}
                                 onActiveChange={handleNewActiveChange}
+                                onImageChange={handleNewImageChange}
+                                onImageRemove={removeNewImage}
+                                imagePreview={newWordImagePreview}
                             />
                         </div>
                     )}
@@ -276,10 +427,13 @@ export default function Show({
                                         <thead className="bg-gray-50">
                                             <tr>
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    Word
+                                                    Larawan
                                                 </th>
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                                    Meaning
+                                                    Salita
+                                                </th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                    Kahulugan
                                                 </th>
                                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                                     Status
@@ -300,6 +454,21 @@ export default function Show({
                                                     key={word.id}
                                                     className="hover:bg-gray-50 transition-colors"
                                                 >
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        {word.picture_url ? (
+                                                            <img
+                                                                src={
+                                                                    word.picture_url
+                                                                }
+                                                                alt={word.word}
+                                                                className="w-16 h-16 object-cover rounded-lg border border-gray-200"
+                                                            />
+                                                        ) : (
+                                                            <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center">
+                                                                <LuImage className="w-6 h-6 text-gray-400" />
+                                                            </div>
+                                                        )}
+                                                    </td>
                                                     <td className="px-6 py-4 whitespace-nowrap">
                                                         <div className="text-sm font-medium text-gray-900">
                                                             {word.word}
@@ -478,10 +647,11 @@ export default function Show({
                                             onSubmit={handleUpdateWord}
                                             onCancel={() => {
                                                 setEditingWord(null);
+                                                setEditWordImagePreview(null);
                                                 setErrors({});
                                             }}
-                                            title="Edit Word"
-                                            submitLabel="Update Word"
+                                            title="I-edit ang Salita"
+                                            submitLabel="I-update ang Salita"
                                             errors={errors}
                                             onWordChange={handleEditWordChange}
                                             onMeaningChange={
@@ -489,6 +659,14 @@ export default function Show({
                                             }
                                             onActiveChange={
                                                 handleEditActiveChange
+                                            }
+                                            onImageChange={
+                                                handleEditImageChange
+                                            }
+                                            onImageRemove={removeEditImage}
+                                            imagePreview={
+                                                editWordImagePreview ||
+                                                editingWord.picture_url
                                             }
                                         />
                                     </div>
