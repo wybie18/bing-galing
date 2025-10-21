@@ -238,10 +238,11 @@ class GameController extends Controller
             'message'      => 'Game started successfully',
             'game'         => new GameResource($game),
             'current_word' => $currentWord ? [
-                'id'        => $currentWord->id,
-                'word'      => $currentWord->word,
-                'meaning'   => $currentWord->meaning,
-                'called_at' => $currentWord->pivot->called_at,
+                'id'          => $currentWord->id,
+                'word'        => $currentWord->word,
+                'picture_url' => $currentWord->picture_url,
+                'meaning'     => $currentWord->meaning,
+                'called_at'   => $currentWord->pivot->called_at,
             ] : null,
             'statistics'   => [
                 'total_words'     => $totalWords,
